@@ -24,6 +24,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # detached HEAD at the triggered sha is fine: the script pushes
+          # HEAD:refs/heads/$GITHUB_REF_NAME, and 1 commit is all it needs.
+          fetch-depth: 1
 
       - name: Bump manifests from upstream releases
         run: python3 ci/checkver.py --commit
