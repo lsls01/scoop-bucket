@@ -1,12 +1,17 @@
 name: checkver
 
-# 每天 01:03 UTC（北京 09:03）检查上游 release，把 bucket 里的清单升到最新版并推回本仓。
-# 写回用的是本次构建自带的 GITHUB_TOKEN（permissions: contents: write），
-# 仓里和 secret 里没有任何长期凭据。
+# 每天 01:03 UTC（北京 09:03）检查上游 release，把 bucket 清单升到最新并推回本仓。
+# 写回只用本次构建自带的 GITHUB_TOKEN（permissions: contents: write）：仓里、Actions secret 里
+# 都没有任何长期凭据（actions/secrets total_count = 0）。
 #
-# 实测：GitHub Free 个人账户下这个仓库为 private 时 schedule 从不触发（5 个周期、含官方推荐
-# 的错峰分钟 + disable/enable 重注册，全部 0 次），而 push 与 workflow_dispatch 都正常。
-# 所以私有状态下自动通道只有本机一条命令：python3 ci/checkver.py --commit
+# 私有仓 + GitHub Free 个人账户实测不触发 schedule：2026-10-19 用 "*/10"（撞整点）和
+# "7,17,27,37,47,57"（官方建议的错峰分钟）两个探针、并 disable/enable 重注册后观察 5 个周期，
+# event=schedule 的 run 数始终为 0，而同仓同配置的 push 与 workflow_dispatch 触发全部成功。
+# 官方文档只写了「公开仓 60 天无活动会停 schedule」，没有写私有这条限制。
+# 所以私有状态下要么手动一条命令（等价于流水线）：
+#   python3 ci/checkver.py --commit
+#   gh workflow run checkver.yml -R lsls01/scoop-bucket
+# 要么把仓库转公开（gh repo edit lsls01/scoop-bucket --visibility public）让 cron 真正生效。
 on:
   schedule:
     - cron: "3 1 * * *"
