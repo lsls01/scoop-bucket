@@ -14,7 +14,7 @@ name: checkver
 # 要么把仓库转公开（gh repo edit lsls01/scoop-bucket --visibility public）让 cron 真正生效。
 on:
   schedule:
-    - cron: "3 1 * * *"
+    - cron: "7,17,27,37,47,57 * * * *"   # TEMP probe after going public
   workflow_dispatch: {}
   push:
     branches:
