@@ -1,0 +1,41 @@
+version: "1.0"
+name: checkver-sweep
+displayName: 自动检测上游版本并 bump scoop 清单
+stages:
+  - name: sweep
+    displayName: checkver sweep
+    strategy: naturally
+    trigger: auto
+    executor:
+      - gitee
+    steps:
+      - step: custom-build@custom
+        name: bump-manifests
+        displayName: bump bucket manifests
+        commands: |-
+          source setup python 3.11
+          python3 --version
+          # GITEE_TOKEN 必须来自 Gitee Go 的「全局参数」(私密)，不要写死在本文件里
+          : "${GITEE_TOKEN:?set GITEE_TOKEN as a private global parameter}"
+          export CHECKVER_REPO=xuemi01/scoop-bucket
+          export CHECKVER_BRANCH=master
+          python3 ci/checkver.py --commit-api
+ref_variable:
+  - REF_PROJECT_VAR
+triggers:
+  trigger: auto
+  push:
+    branches:
+      precise:
+        - master
+    paths:
+      include:
+        - ci/checkver.py
+        - ci/checkver.json
+  schedule:
+    # 每天 09:03（北京时间）；上游发新版后最迟次日清单就跟上
+    - cron: 0 3 9 * * ?
+strategy:
+  retry: "1"
+  timeout: 15
+  cloneDepth: 1

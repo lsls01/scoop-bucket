@@ -1,0 +1,13 @@
+{
+  "manifest_repo": "xuemi01/scoop-bucket",
+  "apps": [
+    {
+      "manifest": "bucket/gitee.json",
+      "source_repo": "oschina/gitee-cli",
+      "arch": "windows_amd64",
+      "url_template": "https://gitee.com/oschina/gitee-cli/releases/download/v{version}/gitee_{version}_windows_amd64.zip",
+      "checksums_template": "https://gitee.com/oschina/gitee-cli/releases/download/v{version}/checksums.txt",
+      "asset_pattern": "gitee_{version}_windows_amd64.zip"
+    }
+  ]
+}
