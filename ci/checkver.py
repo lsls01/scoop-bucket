@@ -22,6 +22,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
@@ -96,6 +97,11 @@ def commit_and_push(paths: list[str], summary: str) -> None:
 
     The runner's remote already carries the job's short-lived GITHUB_TOKEN, so no personal
     credential is involved and nothing secret is stored in this repository.
+
+    A queued or concurrent run starts from an older sha and gets its push rejected as a
+    non-fast-forward, so: commit, fetch the branch tip, rebase onto it, then push. Rebasing a
+    bump that the tip already contains drops the commit and the push becomes a no-op. Nothing
+    is ever force-pushed and a real conflict aborts loudly instead of overwriting.
     """
     branch = current_branch()
     git("add", "--", *paths)
@@ -104,6 +110,17 @@ def commit_and_push(paths: list[str], summary: str) -> None:
         return
     git("commit", "-q", "-m", f"checkver: bump {summary}")
     try:
+        git("fetch", "-q", "origin", branch)
+        git("rebase", "-q", "--autostash", "FETCH_HEAD")
+    except SystemExit as exc:
+        subprocess.run(["git", "rebase", "--abort"], cwd=ROOT, capture_output=True)
+        print(f"cannot replay onto origin/{branch}; commit left local: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+    ahead = git("rev-list", "--count", f"FETCH_HEAD..HEAD")
+    if ahead == "0":
+        print(f"origin/{branch} already carries this bump; nothing to push")
+        return
+    try:
         git("push", "-q", "origin", f"HEAD:refs/heads/{branch}")
     except SystemExit as exc:
         print(f"push refused: {exc}", file=sys.stderr)
@@ -111,10 +128,45 @@ def commit_and_push(paths: list[str], summary: str) -> None:
     print(f"pushed bump commit to {branch}: {summary}")
 
 
+def heartbeat(age_days: int) -> str | None:
+    """Keep the repo alive for GitHub's schedule trigger.
+
+    GitHub silently stops firing `schedule` on a repo with no commit activity for 60 days.
+    A bucket that is already up to date produces no commits, which is exactly the quiet case
+    where the sweep must keep running -- so in CI we touch one small file whenever the last
+    heartbeat is older than `age_days`. Returns the path, or None when no touch is needed.
+    """
+    if os.environ.get("GITHUB_ACTIONS") != "true":
+        return None
+    path = ROOT / "ci" / "heartbeat.json"
+    stamp = 0.0
+    if path.exists():
+        try:
+            stamp = float(json.loads(path.read_text(encoding="utf-8"))["epoch"])
+        except (ValueError, KeyError, TypeError):
+            stamp = 0.0
+    if time.time() - stamp < age_days * 86400:
+        return None
+    path.write_text(
+        json.dumps(
+            {
+                "epoch": int(time.time()),
+                "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "note": "sweep ran and every manifest was already current; keeps schedule triggers alive",
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return "ci/heartbeat.json"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--commit", action="store_true", help="git commit + push the bumped manifests")
+    ap.add_argument("--heartbeat-days", type=int, default=20, help="CI keep-alive touch interval")
     args = ap.parse_args()
 
     cfg = json.loads((ROOT / "ci" / "checkver.json").read_text(encoding="utf-8"))
@@ -125,6 +177,9 @@ def main() -> int:
             stale.append((spec["manifest"], moved[0], moved[1]))
     if not stale:
         print("all manifests already at the newest release")
+        alive = heartbeat(args.heartbeat_days) if args.commit else None
+        if alive:
+            commit_and_push([alive], "heartbeat (schedule keep-alive)")
         return 0
     summary = ", ".join(f"{Path(p).name} {old}->{new}" for p, old, new in stale)
     if args.dry_run:
