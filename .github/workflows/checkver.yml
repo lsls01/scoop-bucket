@@ -4,13 +4,12 @@ name: checkver
 # 写回用的是本次构建自带的 GITHUB_TOKEN（permissions: contents: write），
 # 仓里和 secret 里没有任何长期凭据。
 #
-# 这个仓库必须是 public 才会按时触发：实测 GitHub Free 个人账户的私有仓不触发 schedule
-# （2026-10-19 用 "*/10 * * * *" 观察 14:50 / 15:00 / 15:10 三个周期，schedule run 数为 0，
-# 同时 push 和 workflow_dispatch 都正常跑）。转私有可以，但自动更新会退化成手动
-# `gh workflow run checkver.yml` 或 `python3 ci/checkver.py --commit`。
+# 实测：GitHub Free 个人账户下这个仓库为 private 时 schedule 从不触发（5 个周期、含官方推荐
+# 的错峰分钟 + disable/enable 重注册，全部 0 次），而 push 与 workflow_dispatch 都正常。
+# 所以私有状态下自动通道只有本机一条命令：python3 ci/checkver.py --commit
 on:
   schedule:
-    - cron: "7,17,27,37,47,57 * * * *"   # TEMP probe: 每 10 分钟、错开整点
+    - cron: "3 1 * * *"
   workflow_dispatch: {}
   push:
     branches:
