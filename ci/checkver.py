@@ -10,8 +10,8 @@ this script is what keeps a bucket that has no upstream bucket fresh.
   checkver.py --dry-run       # report only
   checkver.py --commit        # also git commit + push (what the workflow runs)
 
-Exit codes: 0 = no change, or change applied; 2 = change detected but the commit/push step
-was refused (so a scheduled run surfaces it instead of looking green).
+Exit codes: 0 = no change, or change applied and pushed; 2 = a change exists but could not
+be published (push refused, or the branch tip conflicts with what we computed).
 """
 
 from __future__ import annotations
@@ -22,7 +22,6 @@ import os
 import re
 import subprocess
 import sys
-import time
 import urllib.request
 from pathlib import Path
 
@@ -92,16 +91,17 @@ def current_branch() -> str:
     raise SystemExit("cannot resolve a branch to push to (detached HEAD, no GITHUB_REF_NAME)")
 
 
-def commit_and_push(paths: list[str], summary: str) -> None:
+def commit_and_push(paths: list[str], summary: str, want: dict[str, str] | None = None) -> None:
     """Commit the bumped manifests and push them to the branch we started from.
 
     The runner's remote already carries the job's short-lived GITHUB_TOKEN, so no personal
     credential is involved and nothing secret is stored in this repository.
 
-    A queued or concurrent run starts from an older sha and gets its push rejected as a
-    non-fast-forward, so: commit, fetch the branch tip, rebase onto it, then push. Rebasing a
-    bump that the tip already contains drops the commit and the push becomes a no-op. Nothing
-    is ever force-pushed and a real conflict aborts loudly instead of overwriting.
+    A queued or concurrent run starts from an older sha, so: commit, fetch the branch tip,
+    rebase onto it, then push. A bump the tip already contains is dropped by the rebase and
+    the push becomes a no-op. If the tip moved to something else entirely, the rebase is
+    aborted rather than merged by guesswork: same version we wanted -> nothing to do, any
+    other conflict -> fail loudly and leave the commit local.
     """
     branch = current_branch()
     git("add", "--", *paths)
@@ -109,15 +109,16 @@ def commit_and_push(paths: list[str], summary: str) -> None:
         print("nothing staged; the bump matched what is already committed")
         return
     git("commit", "-q", "-m", f"checkver: bump {summary}")
+    git("fetch", "-q", "origin", branch)
     try:
-        git("fetch", "-q", "origin", branch)
         git("rebase", "-q", "--autostash", "FETCH_HEAD")
-    except SystemExit as exc:
-        subprocess.run(["git", "rebase", "--abort"], cwd=ROOT, capture_output=True)
-        print(f"cannot replay onto origin/{branch}; commit left local: {exc}", file=sys.stderr)
-        raise SystemExit(2) from exc
-    ahead = git("rev-list", "--count", f"FETCH_HEAD..HEAD")
-    if ahead == "0":
+    except SystemExit:
+        git("rebase", "--abort")
+        if want and all(_remote_version(branch, p) == v for p, v in want.items()):
+            print(f"origin/{branch} already at the newest version; nothing to push")
+            return
+        raise SystemExit(2)
+    if git("rev-list", "--count", "FETCH_HEAD..HEAD") == "0":
         print(f"origin/{branch} already carries this bump; nothing to push")
         return
     try:
@@ -128,45 +129,22 @@ def commit_and_push(paths: list[str], summary: str) -> None:
     print(f"pushed bump commit to {branch}: {summary}")
 
 
-def heartbeat(age_days: int) -> str | None:
-    """Keep the repo alive for GitHub's schedule trigger.
-
-    GitHub silently stops firing `schedule` on a repo with no commit activity for 60 days.
-    A bucket that is already up to date produces no commits, which is exactly the quiet case
-    where the sweep must keep running -- so in CI we touch one small file whenever the last
-    heartbeat is older than `age_days`. Returns the path, or None when no touch is needed.
-    """
-    if os.environ.get("GITHUB_ACTIONS") != "true":
+def _remote_version(branch: str, rel: str) -> str | None:
+    """Version recorded in a manifest on the fetched branch tip, or None if unreadable."""
+    try:
+        raw = git("show", f"FETCH_HEAD:{rel}")
+    except SystemExit:
         return None
-    path = ROOT / "ci" / "heartbeat.json"
-    stamp = 0.0
-    if path.exists():
-        try:
-            stamp = float(json.loads(path.read_text(encoding="utf-8"))["epoch"])
-        except (ValueError, KeyError, TypeError):
-            stamp = 0.0
-    if time.time() - stamp < age_days * 86400:
+    try:
+        return str(json.loads(raw)["version"])
+    except (json.JSONDecodeError, KeyError):
         return None
-    path.write_text(
-        json.dumps(
-            {
-                "epoch": int(time.time()),
-                "utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "note": "sweep ran and every manifest was already current; keeps schedule triggers alive",
-            },
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    return "ci/heartbeat.json"
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--commit", action="store_true", help="git commit + push the bumped manifests")
-    ap.add_argument("--heartbeat-days", type=int, default=20, help="CI keep-alive touch interval")
     args = ap.parse_args()
 
     cfg = json.loads((ROOT / "ci" / "checkver.json").read_text(encoding="utf-8"))
@@ -177,16 +155,13 @@ def main() -> int:
             stale.append((spec["manifest"], moved[0], moved[1]))
     if not stale:
         print("all manifests already at the newest release")
-        alive = heartbeat(args.heartbeat_days) if args.commit else None
-        if alive:
-            commit_and_push([alive], "heartbeat (schedule keep-alive)")
         return 0
     summary = ", ".join(f"{Path(p).name} {old}->{new}" for p, old, new in stale)
     if args.dry_run:
         print(f"would commit {len(stale)} manifest change(s): {summary}")
         return 0
     if args.commit:
-        commit_and_push([p for p, _, _ in stale], summary)
+        commit_and_push([p for p, _, _ in stale], summary, {p: new for p, _, new in stale})
     else:
         print(f"updated {len(stale)} manifest(s) in place only: {summary}")
     return 0
