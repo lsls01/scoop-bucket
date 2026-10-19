@@ -3,13 +3,21 @@ name: checkver
 # 每天 01:03 UTC（北京 09:03）检查上游 release，把 bucket 里的清单升到最新版并推回本仓。
 # 写回用的是本次构建自带的 GITHUB_TOKEN（permissions: contents: write），
 # 仓里和 secret 里没有任何长期凭据。
+#
+# 这个仓库必须是 public 才会按时触发：实测 GitHub Free 个人账户的私有仓不触发 schedule
+# （2026-10-19 用 "*/10 * * * *" 观察 14:50 / 15:00 / 15:10 三个周期，schedule run 数为 0，
+# 同时 push 和 workflow_dispatch 都正常跑）。转私有可以，但自动更新会退化成手动
+# `gh workflow run checkver.yml` 或 `python3 ci/checkver.py --commit`。
 on:
   schedule:
-    - cron: "*/10 * * * *"   # TEMP schedule probe (private + Free): revert to "3 1 * * *"
+    - cron: "3 1 * * *"
   workflow_dispatch: {}
   push:
+    branches:
+      - master
     paths:
       - "ci/**"
+      - "bucket/**"
       - ".github/workflows/checkver.yml"
 
 permissions:
