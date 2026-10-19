@@ -15,13 +15,10 @@ stages:
         commands: |-
           source setup python 3.11
           python3 --version
-          # GITEE_TOKEN 必须来自 Gitee Go 的「全局参数」(私密)，不要写死在本文件里
-          : "${GITEE_TOKEN:?set GITEE_TOKEN as a private global parameter}"
-          export CHECKVER_REPO=xuemi01/scoop-bucket
-          export CHECKVER_BRANCH=master
-          python3 ci/checkver.py --commit-api
-ref_variable:
-  - REF_PROJECT_VAR
+          git config --get remote.origin.url
+          # 写回走 git push：runner 的 workspace clone 自带本次构建的仓库凭据，
+          # 不需要把任何 token 放进这份 YAML。push 被拒时脚本非 0 退出，构建直接红。
+          python3 ci/checkver.py --commit
 triggers:
   trigger: auto
   push:
