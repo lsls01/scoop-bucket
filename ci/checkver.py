@@ -6,19 +6,17 @@ bucket, so it can run either in a Gitee Go runner or on the Windows box.
 
   checkver.py                     # report + rewrite manifests in place
   checkver.py --dry-run           # report only
-  checkver.py --commit-api        # also commit the changed files back via the Gitee V5
-                                  # contents API; needs GITEE_TOKEN and CHECKVER_REPO
-Exit code: 0 = no change or change applied, 10 = changes pending with --commit-api but
-no token (so a scheduled job surfaces it), 1 = failure.
+  checkver.py --commit            # git commit + push the bumped manifests to origin
+                                  # (this is what the Gitee Go pipeline runs)
+Exit code: 0 = nothing to do or change applied, 1 = failure.
 """
 
 from __future__ import annotations
 
 import argparse
-import base64
 import json
-import os
 import re
+import subprocess
 import sys
 import urllib.request
 from pathlib import Path
@@ -69,39 +67,33 @@ def bump(spec: dict, dry: bool) -> tuple[str, str] | None:
     return current, newest
 
 
-def commit_api(spec_files: dict[str, str]) -> None:
-    """PUT each changed file through the Gitee contents API (no git in the runner)."""
-    token = os.environ.get("GITEE_TOKEN")
-    repo = os.environ.get("CHECKVER_REPO") or spec_files.get("_repo")
-    if not token or not repo:
-        print("GITEE_TOKEN / CHECKVER_REPO missing; leaving the working tree updated", file=sys.stderr)
-        raise SystemExit(10)
-    for rel in spec_files["paths"]:
-        blob = json.loads(http_get(f"https://gitee.com/api/v5/repos/{repo}/contents/{rel}"))
-        payload = json.dumps(
-            {
-                "access_token": token,
-                "content": base64.b64encode((ROOT / rel).read_bytes()).decode(),
-                "sha": blob["sha"],
-                "message": f"checkver: bump {Path(rel).name}",
-                "branch": os.environ.get("CHECKVER_BRANCH", "master"),
-            }
-        ).encode()
-        req = urllib.request.Request(
-            f"https://gitee.com/api/v5/repos/{repo}/contents/{rel}",
-            data=payload,
-            method="PUT",
-            headers={"User-Agent": UA, "Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            json.loads(resp.read().decode())
-        print(f"committed {rel} to {repo}")
+def commit_git(paths: list[str], version_summary: str) -> None:
+    """Commit the rewritten manifests and push them to origin.
+
+    Used by the Gitee Go pipeline: the runner's checked-out workspace already carries the
+    pipeline access token in its remote URL, so `git push` is the write path that needs no
+    secret of mine in the YAML. Nothing is ever printed; if the remote rejects the push the
+    command surfaces the error and the build fails loudly.
+    """
+    def git(*a):
+        r = subprocess.run(["git", *a], cwd=ROOT, capture_output=True, text=True)
+        if r.returncode != 0:
+            raise SystemExit(f"git {' '.join(a)} failed: {r.stderr.strip()[:200]}")
+        return r.stdout.strip()
+
+    git("add", "--", *paths)
+    if not git("diff", "--cached", "--name-only"):
+        print("nothing staged; skipping commit")
+        return
+    git("commit", "-q", "-m", f"checkver: bump {version_summary}")
+    git("push", "-q", "origin", "HEAD")
+    print(f"pushed bump commit for {version_summary}")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--commit-api", action="store_true", help="push changes with the Gitee contents API")
+    ap.add_argument("--commit", action="store_true", help="git commit + push the bumped manifests")
     args = ap.parse_args()
 
     cfg = json.loads((ROOT / "ci" / "checkver.json").read_text(encoding="utf-8"))
@@ -118,8 +110,8 @@ def main() -> int:
         print(f"would commit {len(stale)} manifest change(s): {summary}")
         return 0
     print(f"updated {len(stale)} manifest(s) in place: {summary}")
-    if args.commit_api:
-        commit_api({"paths": [p for p, _, _ in stale], "_repo": cfg["manifest_repo"]})
+    if args.commit:
+        commit_git([p for p, _, _ in stale], summary)
     return 0
 
 

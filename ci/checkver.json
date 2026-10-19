@@ -1,5 +1,4 @@
 {
-  "manifest_repo": "xuemi01/scoop-bucket",
   "apps": [
     {
       "manifest": "bucket/gitee.json",
