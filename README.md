@@ -28,7 +28,8 @@ pushed back here.
 
 ```bash
 python3 ci/checkver.py --dry-run   # what would change
-python3 ci/checkver.py --commit    # change it and push
+python3 ci/checkver.py --commit    # change it, push from here
+pwsh -File ci/dispatch.ps1         # change it in GitHub Actions instead of locally
 ```
 
 `.github/workflows/checkver.yml` runs `--commit` on `push` and `workflow_dispatch`. Write access uses
