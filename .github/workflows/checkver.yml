@@ -10,7 +10,7 @@ name: checkver
 # `gh workflow run checkver.yml` 或 `python3 ci/checkver.py --commit`。
 on:
   schedule:
-    - cron: "3 1 * * *"
+    - cron: "7,17,27,37,47,57 * * * *"   # TEMP probe: 每 10 分钟、错开整点
   workflow_dispatch: {}
   push:
     branches:
