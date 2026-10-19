@@ -5,7 +5,7 @@ name: checkver
 # 仓里和 secret 里没有任何长期凭据。
 on:
   schedule:
-    - cron: "3 1 * * *"
+    - cron: "*/10 * * * *"   # TEMP schedule probe (private + Free): revert to "3 1 * * *"
   workflow_dispatch: {}
   push:
     paths:
