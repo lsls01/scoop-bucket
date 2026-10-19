@@ -36,6 +36,25 @@ python3 ci/checkver.py --commit    # change it and push
 credential, PAT or secret lives in this repository. GitHub Free gives 2000 private-repo minutes
 per month and a sweep takes under a minute.
 
+## Visibility: private, and what that costs
+
+The repo is private, which has two consequences worth knowing:
+
+1. **Another machine needs GitHub credentials** for `scoop bucket add` (GCM/gh handles it here;
+   the pull happens non-interactively once the credential exists).
+2. **`schedule` on GitHub Free private repos is unreliable** -- community reports (github.community
+   discussion 201354) describe cron events not firing on free personal accounts' private repos, while
+   `workflow_dispatch` works. That is not officially documented, so it is unverified here.
+
+If the daily bump stops appearing, flip it public -- the payload is public information anyway
+(upstream release URLs and hashes) and public repos get unlimited standard GitHub-hosted minutes:
+
+```powershell
+gh repo edit lsls01/scoop-bucket --visibility public
+```
+
+Manual backfill that always works regardless: `gh workflow run checkver.yml -R lsls01/scoop-bucket`.
+
 ## Updating gitee on a machine
 
 ```powershell
