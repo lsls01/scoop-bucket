@@ -1,61 +1,48 @@
 # lishe — personal scoop bucket
 
-Remote (source of truth): `https://gitee.com/xuemi01/scoop-bucket.git` (private).
-Clone it on another machine with:
+Remote (source of truth): `https://github.com/lsls01/scoop-bucket.git` (private).
+Add it on any Windows machine:
 
 ```powershell
-scoop bucket add lishe https://gitee.com/xuemi01/scoop-bucket.git
+scoop bucket add lishe https://github.com/lsls01/scoop-bucket.git
 ```
-
-Locally maintained manifests for tools that upstream scoop buckets (main/extras) do not carry.
 
 ## gitee (Gitee CLI, official)
 
 - Upstream: https://gitee.com/oschina/gitee-cli (Gitee org `oschina`, MIT, Go binary per release)
-- Source of truth: Gitee release assets `gitee_<version>_windows_amd64.zip` + `checksums.txt`
-- No scoop manifest exists in main/extras and Gitee publishes no official bucket, hence this file.
+- Assets used: `gitee_<version>_windows_amd64.zip` + that release's `checksums.txt`
+- Neither scoop's main/extras nor Gitee publishes a manifest for it, hence this bucket.
 - Windows amd64 only. macOS/Linux: upstream install script or `npm i -g @gitee/gitee-cli`.
-- Credentials live in `~/.config/gitee/` (written by the CLI itself), so they survive updates.
+- Credentials live in `~/.config/gitee/` (written by the CLI), so they survive updates.
 
-## How a new upstream release reaches scoop
+## Why the bucket needs CI
 
-Scoop's update path reads **only** the `version` field of the bucket manifest
-(`lib/versions.ps1` → `Get-LatestVersion`); `checkver`/`autoupdate` are maintainer-side
-metadata that scoop never executes. So something has to rewrite `bucket/gitee.json` first.
-That is `ci/checkver.py`, and it is meant to run in CI so every machine just pulls:
+Scoop's update path reads **only** the `version` field of the manifest it finds in the bucket
+(`lib/versions.ps1` → `Get-LatestVersion`). `checkver`/`autoupdate` in the manifest are
+maintainer-side metadata that scoop never executes. So a manifest nobody rewrites stays pinned
+forever and `scoop update *` reports it up to date even after upstream ships a release.
 
-```
-upstream release → ci/checkver.py --commit (bump + commit + push here)
-                 → scoop update          (git pull of this bucket)
-                 → scoop update *        (installs the new gitee)
-```
-
-`ci/checkver.py` is stdlib-only Python: it resolves the newest tag from
-`https://gitee.com/api/v5/repos/<upstream>/releases/latest`, takes the real sha256 from that
-release's `checksums.txt` (never `hash: skip`), rewrites `version`/`url`/`hash`, and commits.
-It mirrors the manifest's own `checkver`/`autoupdate` fields — verified to produce byte-identical
-output on the 0.3.1 → 0.3.2 bump.
+`ci/checkver.py` is the rewriter: newest tag from the Gitee releases API, real sha256 from that
+release's own `checksums.txt` (never `hash: skip`), then `version`/`url`/`hash` rewritten and
+pushed back here.
 
 ```bash
 python3 ci/checkver.py --dry-run   # what would change
 python3 ci/checkver.py --commit    # change it and push
 ```
 
-### Gitee Go schedule
+`.github/workflows/checkver.yml` runs `--commit` every day at 01:03 UTC (09:03 北京时间) and on
+`workflow_dispatch`. Write access uses the job's short-lived `GITHUB_TOKEN` only; no personal
+credential, PAT or secret lives in this repository. GitHub Free gives 2000 private-repo minutes
+per month and a sweep takes under a minute.
 
-`checkver-sweep.yml` (repo root, kept in sync with `ci/checkver-sweep.yml`) is the pipeline:
-a `custom-build@custom` step running `python3 ci/checkver.py --commit`, cron `0 3 9 * * ?`
-(09:03 北京时间 daily). It is inert until **Gitee Go is opened for this account/repo** — the API
-refuses pipeline commits with `Gitee Go service is already closed!`, which is a web-side switch
-(仓库 → 服务 → Gitee Go 开通，个人账号需绑定手机号；开通后单仓库送 200 分钟构建时长，个人每月另有 1000 分钟).
-After that, `gitee pipeline list -R xuemi01/scoop-bucket --ref master` picks the file up and the
-cron starts firing.
+## Updating gitee on a machine
 
-Until then, run `python3 ci/checkver.py --commit` by hand (or from a scheduled task) — it needs
-no scoop internals and takes one second.
+```powershell
+scoop update      # git pull of this bucket -> picks up the CI bump
+scoop update *    # installs the new version
+```
 
-### Do not self-update the binary
-
-`gitee update` (the CLI's own self-update) overwrites the exe in place and leaves scoop's
-recorded version stale. `gitee config set update_check false` is applied on this machine for
-that reason.
+Never use `gitee update` (the CLI's own self-update): it replaces the exe in place and leaves
+scoop's recorded version stale. `gitee config set update_check false` is set on this machine so
+it does not even nag.
