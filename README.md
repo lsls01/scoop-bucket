@@ -50,26 +50,25 @@ gh workflow run checkver.yml -R lsls01/scoop-bucket               # manual, in t
 gh repo edit lsls01/scoop-bucket --visibility public                # makes cron actually fire
 ```
 
-## Visibility: private, and what that costs
+## How the bump actually happens (measured)
 
-The repo is private, which has two consequences worth knowing:
-
-1. **Another machine needs GitHub credentials** for `scoop bucket add` (GCM/gh handles it here;
-   the pull happens non-interactively once the credential exists).
-2. **`schedule` on GitHub Free private repos is unreliable** -- community reports (github.community
-   discussion 201354) describe cron events not firing on free personal accounts' private repos, while
-   `workflow_dispatch` works. That is not officially documented, so it is unverified here.
-
-If the daily bump stops appearing, flip it public -- the payload is public information anyway
-(upstream release URLs and hashes) and public repos get unlimited standard GitHub-hosted minutes:
+`schedule` does **not** fire for this account. Verified 2026-10-19/20 with two workflows on this
+repo, both visibilities, off-peak and top-of-hour crons, plus a disable/enable re-registration:
+about 15 expected windows produced `event == schedule` runs = 0, while `push` and
+`workflow_dispatch` runs on the same repo completed every time (11 + 6 of them). Making the repo
+public did not change it. So the workflow is a manual/push fallback only, and the automation lives
+on this machine:
 
 ```powershell
-gh repo edit lsls01/scoop-bucket --visibility public
+# scheduled task: scoop-bucket-checkver  (see pi-setup MANIFEST §6)
+pwsh -NoProfile -File ~\scoop\buckets\lishe\ci\sweep.ps1     # pull → bump → commit → push
+# log: $env:LOCALAPPDATA\scoop-bucket-checkver.log
+gh workflow run checkver.yml -R lsls01/scoop-bucket            # or: pwsh -File ci/dispatch.ps1
 ```
 
-Manual backfill that always works regardless: `gh workflow run checkver.yml -R lsls01/scoop-bucket`.
+The repo is public, so a fresh machine needs no GitHub credential for `scoop bucket add`.
 
-## Updating gitee on a machine
+## Updating gitee on a machine/
 
 ```powershell
 scoop update      # git pull of this bucket -> picks up the CI bump

@@ -1,20 +1,20 @@
 name: checkver
 
-# 每天 01:03 UTC（北京 09:03）检查上游 release，把 bucket 清单升到最新并推回本仓。
-# 写回只用本次构建自带的 GITHUB_TOKEN（permissions: contents: write）：仓里、Actions secret 里
-# 都没有任何长期凭据（actions/secrets total_count = 0）。
+# 清单版本自动跟进。两种触发方式，分工不同：
 #
-# 私有仓 + GitHub Free 个人账户实测不触发 schedule：2026-10-19 用 "*/10"（撞整点）和
-# "7,17,27,37,47,57"（官方建议的错峰分钟）两个探针、并 disable/enable 重注册后观察 5 个周期，
-# event=schedule 的 run 数始终为 0，而同仓同配置的 push 与 workflow_dispatch 触发全部成功。
-# 官方文档只写了「公开仓 60 天无活动会停 schedule」，没有写私有这条限制。
-# 所以私有状态下要么手动一条命令（等价于流水线）：
-#   python3 ci/checkver.py --commit
-#   gh workflow run checkver.yml -R lsls01/scoop-bucket
-# 要么把仓库转公开（gh repo edit lsls01/scoop-bucket --visibility public）让 cron 真正生效。
+# - push / workflow_dispatch：实测**可用**（本仓 11 次 push run + 6 次 dispatch run 全部 completed）。
+#   手动兜底：pwsh -File ci/dispatch.ps1
+# - schedule：实测在本账户**从不触发**。2026-10-19/20 覆盖私有与公开两种可见性、两个 workflow
+#   （checkver 与独立的 schedule-only 探针）、错峰分钟（7,17,.../*/*）与整点（*/10）、
+#   disable/enable 重注册，约 15 个预期窗口，event=schedule 的 run 数恒为 0。
+#   保留这一段只是万一哪天生效；不要把它当依赖。
+#
+# 真正每天跑的是本机计划任务 scoop-bucket-checkver（每周/每天执行 ci/sweep.ps1：
+# git pull → python3 ci/checkver.py --commit → push），日志在 %LOCALAPPDATA%\scoop-bucket-checkver.log。
+# 写回只用本次构建自带的 GITHUB_TOKEN；仓里和 Actions secret 里没有任何长期凭据。
 on:
   schedule:
-    - cron: "7,17,27,37,47,57 * * * *"   # TEMP probe after going public
+    - cron: "3 1 * * *"
   workflow_dispatch: {}
   push:
     branches:
