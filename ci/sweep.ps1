@@ -23,24 +23,31 @@ $env:PATH = (Join-Path $env:USERPROFILE 'scoop\shims') + ';' + $env:PATH
 
 function Invoke-SweepPython {
     param([string[]] $Args)
-    # uv first (global rule: Python goes through uv), then a system interpreter.
+    $script = Join-Path $root 'ci\checkver.py'
+    # uv first (global rule: Python goes through uv). If uv cannot resolve an interpreter --
+    # offline, no cache -- fall back to a system python. checkver.py is idempotent, so a
+    # second attempt after a failed first one cannot double-bump.
     $uv = Get-Command uv -ErrorAction SilentlyContinue
     if ($uv) {
-        & uv run --no-project --python 3.12 (Join-Path $root 'ci\checkver.py') @Args
-        return
+        & uv run --no-project --python 3.12 $script @Args
+        if ($LASTEXITCODE -eq 0) { return 'uv' }
+        Write-Host "uv run failed ($LASTEXITCODE); retrying with system python"
     }
     $py = Get-Command python3, python -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $py) { throw 'no python interpreter and no uv on PATH' }
-    & $py.Source (Join-Path $root 'ci\checkver.py') @Args
+    & $py.Source $script @Args
+    if ($LASTEXITCODE -ne 0) { throw "checkver exited $LASTEXITCODE" }
+    return $py.Source
 }
 
 Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] sweep start ($root)" | Tee-Object -FilePath $log -Append
 Push-Location $root
 try {
-    git pull --rebase --quiet origin master
+    # --autostash: editing a manifest or this script locally must not break the daily task.
+    git pull --rebase --autostash --quiet origin master
     if ($LASTEXITCODE -ne 0) { throw "git pull failed ($LASTEXITCODE); bucket left untouched" }
-    Invoke-SweepPython --commit 2>&1 | Tee-Object -FilePath $log -Append
-    if ($LASTEXITCODE -ne 0) { throw "checkver exited $LASTEXITCODE" }
+    $used = Invoke-SweepPython --commit 2>&1 | Tee-Object -FilePath $log -Append
+    Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] interpreter: $used" | Tee-Object -FilePath $log -Append
 } catch {
     Write-Host "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] FAILED: $($_.Exception.Message)" | Tee-Object -FilePath $log -Append
     exit 1
