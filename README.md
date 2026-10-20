@@ -1,6 +1,8 @@
 # lishe — personal scoop bucket
 
-Remote (source of truth): `https://github.com/lsls01/scoop-bucket.git` (private).
+Remote (source of truth): `https://github.com/lsls01/scoop-bucket.git` (public: other machines
+add the bucket with no GitHub credential, and public repos are not subject to the 60-day
+schedule inactivity rule).
 Add it on any Windows machine:
 
 ```powershell
