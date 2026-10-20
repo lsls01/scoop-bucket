@@ -30,26 +30,13 @@ pushed back here.
 ```bash
 python3 ci/checkver.py --dry-run   # what would change
 python3 ci/checkver.py --commit    # change it, push from here
-pwsh -File ci/dispatch.ps1         # change it in GitHub Actions instead of locally
+pwsh -File ci/dispatch.ps1         # do the same thing inside a GitHub runner
 ```
 
 `.github/workflows/checkver.yml` runs `--commit` on `push` and `workflow_dispatch`. Write access uses
 the job's short-lived `GITHUB_TOKEN` only: no personal credential, PAT or secret lives in this
 repository (`gh api repos/lsls01/scoop-bucket/actions/secrets` → `total_count: 0`). Standard
 GitHub-hosted runners are free on public repos; one sweep takes seconds.
-
-**The daily `schedule` trigger does not fire while this repo is private.** Measured 2026-10-19 with two
-probe crons -- `*/10 * * * *` (lands on the busy top of the hour) and `7,17,27,37,47,57 * * * *` (the
-documented off-peak minutes), plus a disable/enable re-registration: across 5 expected windows the count
-of `event == schedule` runs stayed 0, while `push` and `workflow_dispatch` runs in the same repo and file
-all completed successfully. Official docs only document the 60-day schedule auto-disable *for public
-repos*, so this is undocumented behaviour of private + Free. Two ways forward:
-
-```powershell
-python3 ci/checkver.py --commit                                   # manual, identical to the workflow
-gh workflow run checkver.yml -R lsls01/scoop-bucket               # manual, in the runner
-gh repo edit lsls01/scoop-bucket --visibility public                # makes cron actually fire
-```
 
 ## How the bump actually happens (measured)
 
