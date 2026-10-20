@@ -48,18 +48,16 @@ public did not change it. So the workflow is a manual/push fallback only, and th
 on this machine:
 
 ```powershell
-# scheduled task: scoop-bucket-checkver  (see pi-setup MANIFEST §6)
+# scheduled task scoop-bucket-checkver runs ci/sweep.ps1 daily at 09:03  (see pi-setup MANIFEST §6)
 pwsh -NoProfile -File ~\scoop\buckets\lishe\ci\sweep.ps1     # pull → bump → commit → push
 # log: $env:LOCALAPPDATA\scoop-bucket-checkver.log
 gh workflow run checkver.yml -R lsls01/scoop-bucket            # or: pwsh -File ci/dispatch.ps1
 ```
 
-The repo is public, so a fresh machine needs no GitHub credential for `scoop bucket add`.
-
-## Updating gitee on a machine/
+## Updating gitee on a machine
 
 ```powershell
-scoop update      # git pull of this bucket -> picks up the CI bump
+scoop update      # git pull of this bucket -> picks up the bump (from the task or from CI)
 scoop update *    # installs the new version
 ```
 
