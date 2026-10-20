@@ -1,8 +1,7 @@
 # lishe — personal scoop bucket
 
-Remote (source of truth): `https://github.com/lsls01/scoop-bucket.git` (public: other machines
-add the bucket with no GitHub credential, and public repos are not subject to the 60-day
-schedule inactivity rule).
+Remote (source of truth): `https://github.com/lsls01/scoop-bucket.git` — public, so another machine
+can add the bucket with no GitHub credential.
 Add it on any Windows machine:
 
 ```powershell
@@ -36,8 +35,8 @@ pwsh -File ci/dispatch.ps1         # change it in GitHub Actions instead of loca
 
 `.github/workflows/checkver.yml` runs `--commit` on `push` and `workflow_dispatch`. Write access uses
 the job's short-lived `GITHUB_TOKEN` only: no personal credential, PAT or secret lives in this
-repository (`gh api repos/lsls01/scoop-bucket/actions/secrets` → `total_count: 0`). GitHub Free includes
-2000 private-repo minutes per month and standard runners are free on public repos; one sweep costs seconds.
+repository (`gh api repos/lsls01/scoop-bucket/actions/secrets` → `total_count: 0`). Standard
+GitHub-hosted runners are free on public repos; one sweep takes seconds.
 
 **The daily `schedule` trigger does not fire while this repo is private.** Measured 2026-10-19 with two
 probe crons -- `*/10 * * * *` (lands on the busy top of the hour) and `7,17,27,37,47,57 * * * *` (the
