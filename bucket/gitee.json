@@ -1,10 +1,10 @@
 {
-    "version": "0.3.1",
+    "version": "0.3.2",
     "description": "Official Gitee command-line tool: manage authentication, repositories, pull requests, issues, releases and SSH keys",
     "homepage": "https://gitee.com/oschina/gitee-cli",
     "license": "MIT",
-    "url": "https://gitee.com/oschina/gitee-cli/releases/download/v0.3.1/gitee_0.3.1_windows_amd64.zip",
-    "hash": "7ba1a45d7524e07215a594f2e27933fd9c976f75a851de8f5edba3800100d986",
+    "url": "https://gitee.com/oschina/gitee-cli/releases/download/v0.3.2/gitee_0.3.2_windows_amd64.zip",
+    "hash": "bf557fa732d94beb2cc553284645e523e6b2d4ae0805780e2a51be3d5f8d8ee7",
     "bin": "gitee.exe",
     "shortname": "gitee",
     "checkver": {
